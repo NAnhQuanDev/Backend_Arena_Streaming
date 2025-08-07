@@ -22,8 +22,9 @@ app.post('/startlive', (req, res) => {
     fs.writeFileSync(overlayPath(matchid), `SCORE: ${score}\nNAME: ${name}`, 'utf8');
     const output_url = `${url}/${streamkey}`;
     const ffmpegArgs = [
-        '-re', '-i', `rtmp://localhost:1935/live/${matchid}`,
-        '-c:v', 'libx264', '-c:a', 'copy', '-f', 'flv', output_url
+         '-i', `rtmp://localhost:1935/live/${matchid}`,
+
+        '-c:v', 'copy', '-c:a', 'copy', '-f', 'flv', output_url
     ];
     console.log(`[${matchid}] Spawn ffmpeg: ${ffmpegArgs.join(' ')}`);
     const ffmpeg = spawn('ffmpeg', ffmpegArgs);
