@@ -3,22 +3,23 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const app = express();
 
-app.use(express.json());
-const runningWorkers = {}; // matchid => process
+app.use(express.urlencoded({ extended: true })); // Cho webhook on_done
+app.use(express.json()); // Cho REST API
+
+const runningWorkers = {}; // matchid => {proc, output_url}
 
 function overlayPath(matchid) {
     return `/tmp/overlay_${matchid}.txt`;
 }
 
-// 1. API khởi động live (có thể truyền url + streamkey động)
+// 1. API khởi tạo live (phải truyền đủ matchid, url, streamkey, overlay khởi tạo)
 app.post('/startlive', (req, res) => {
-    const { matchid, score = 0, name = '', url, streamkey } = req.body;
-    if (!matchid || !url || !streamkey) return res.status(400).json({ error: 'Thiếu tham số!' });
+    const { matchid, url, streamkey, score = 0, name = '' } = req.body;
+    if (!matchid || !url || !streamkey) return res.status(400).json({ error: 'Thiếu tham số' });
 
-    // Ghi overlay mặc định (hoặc từ body)
-    fs.writeFileSync(overlayPath(matchid), `SCORE: ${score}\nNAME: ${name}`, 'utf8');
     if (runningWorkers[matchid]) return res.json({ message: 'Worker đã chạy!' });
 
+    fs.writeFileSync(overlayPath(matchid), `SCORE: ${score}\nNAME: ${name}`, 'utf8');
     const output_url = `${url}/${streamkey}`;
     const ffmpegArgs = [
         '-re', '-i', `rtmp://localhost:1935/live/${matchid}`,
@@ -35,25 +36,25 @@ app.post('/startlive', (req, res) => {
         delete runningWorkers[matchid];
     });
 
-    runningWorkers[matchid] = ffmpeg;
+    runningWorkers[matchid] = { proc: ffmpeg, output_url };
     res.json({ message: 'Đã start live!', ffmpegArgs });
 });
 
-// 2. API cập nhật overlay bất cứ lúc nào
+// 2. API cập nhật overlay động
 app.post('/updateoverlay', (req, res) => {
     const { matchid, score, name } = req.body;
     if (!matchid) return res.status(400).json({ error: 'Thiếu matchid' });
-    const text = `SCORE: ${score ?? ''}\nNAME: ${name ?? ''}`;
+    const text = `SCORE: ${score ?? 0}\nNAME: ${name ?? ''}`;
     fs.writeFileSync(overlayPath(matchid), text, 'utf8');
     res.json({ message: 'Overlay updated!' });
 });
 
-// 3. API stop live, kill worker ffmpeg
+// 3. API stop worker (chủ động kill)
 app.post('/stoplive', (req, res) => {
     const { matchid } = req.body;
     if (!matchid) return res.status(400).json({ error: 'Thiếu matchid' });
     if (runningWorkers[matchid]) {
-        runningWorkers[matchid].kill();
+        runningWorkers[matchid].proc.kill();
         delete runningWorkers[matchid];
         res.json({ message: 'Worker stopped' });
     } else {
@@ -61,10 +62,15 @@ app.post('/stoplive', (req, res) => {
     }
 });
 
-// 4. API check status (optional)
-app.get('/status/:matchid', (req, res) => {
-    const { matchid } = req.params;
-    res.json({ running: !!runningWorkers[matchid] });
+// 4. Webhook: Khi client ngắt ingest (on_done)
+app.post('/hook/on_done', (req, res) => {
+    const matchid = req.body.name;
+    if (runningWorkers[matchid]) {
+        runningWorkers[matchid].proc.kill();
+        delete runningWorkers[matchid];
+        console.log(`[${matchid}] FFmpeg auto-killed by on_done`);
+    }
+    res.end();
 });
 
 app.listen(3001, () => console.log('Livestream Controller API running at 3001'));
