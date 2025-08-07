@@ -23,7 +23,6 @@ app.post('/startlive', (req, res) => {
     const output_url = `${url}/${streamkey}`;
     const ffmpegArgs = [
         '-re', '-i', `rtmp://localhost:1935/live/${matchid}`,
-        '-vf', `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile=${overlayPath(matchid)}:reload=1:x=100:y=50:fontsize=48:fontcolor=white:borderw=2:bordercolor=black`,
         '-c:v', 'libx264', '-c:a', 'copy', '-f', 'flv', output_url
     ];
     console.log(`[${matchid}] Spawn ffmpeg: ${ffmpegArgs.join(' ')}`);
