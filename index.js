@@ -24,7 +24,7 @@ app.post('/startlive', (req, res) => {
     const ffmpegArgs = [
          '-i', `rtmp://localhost:1935/live/${matchid}`,
 
-        '-c:v', 'copy', '-c:a', 'copy', '-f', 'flv', output_url
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'copy', '-f', 'flv', output_url
     ];
     console.log(`[${matchid}] Spawn ffmpeg: ${ffmpegArgs.join(' ')}`);
     const ffmpeg = spawn('ffmpeg', ffmpegArgs);
