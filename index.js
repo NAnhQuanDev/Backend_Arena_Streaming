@@ -9,11 +9,12 @@ app.use(express.json());
 
 const runningWorkers = {}; // matchid => {proc, output_url, overlayFiles}
 
+// ---- Load config từ module JS, KHÔNG JSON.parse ----
 const CONFIG_PATH = path.join(__dirname, 'config', 'config.js');
 if (!fs.existsSync(CONFIG_PATH)) {
   throw new Error(`Missing config file: ${CONFIG_PATH}`);
 }
-const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+const config = require(CONFIG_PATH); // <- quan trọng
 
 function tmpTextFile(matchid, key) {
   return `/tmp/${matchid}_${key}.txt`;
@@ -69,7 +70,8 @@ app.post('/startlive', (req, res) => {
   const output_url = `${url.replace(/\/$/, '')}/${streamkey}`;
   const fontPath = config.fontPath;
 
-  // filter_complex theo pipeline ffmpeg2 (scale/overlay ảnh + nhiều drawtext)
+  // filter_complex như ffmpeg2 (scale/overlay ảnh + nhiều drawtext)
+  // QUAN TRỌNG: bọc path bằng nháy đơn để tránh lỗi khi có khoảng trắng
   const filterComplex =
     [
       `[1:v]scale=329:117[overlay];`,
@@ -85,18 +87,18 @@ app.post('/startlive', (req, res) => {
       `[tmp3][logo3]overlay=W-w-220:10[vbase];`,
 
       `[vbase]` +
-      `drawtext=fontfile=${fontPath}:textfile=${overlayFiles.name}:reload=1:x=70:y=42:fontsize=20:fontcolor=white,` +
-      `drawtext=fontfile=${fontPath}:textfile=${overlayFiles.playerName1}:reload=1:x=90:y=82:fontsize=18:fontcolor=white,` +
-      `drawtext=fontfile=${fontPath}:textfile=${overlayFiles.playerName2}:reload=1:x=90:y=120:fontsize=18:fontcolor=white,` +
-      `drawtext=fontfile=${fontPath}:textfile=${overlayFiles.p1Score}:reload=1:x=290:y=82:fontsize=18:fontcolor=white,` +
-      `drawtext=fontfile=${fontPath}:textfile=${overlayFiles.p2Score}:reload=1:x=290:y=120:fontsize=18:fontcolor=white,` +
-      `drawtext=fontfile=${fontPath}:textfile=${overlayFiles.nowPoint1}:reload=1:x=335:y=82:fontsize=18:fontcolor=black,` +
-      `drawtext=fontfile=${fontPath}:textfile=${overlayFiles.nowPoint2}:reload=1:x=335:y=120:fontsize=18:fontcolor=black,` +
-      `drawtext=fontfile=${fontPath}:textfile=${overlayFiles.player1Innings}:reload=1:x=50:y=100:fontsize=20:fontcolor=white[vout]`
+      `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.name}':reload=1:x=70:y=42:fontsize=20:fontcolor=white,` +
+      `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.playerName1}':reload=1:x=90:y=82:fontsize=18:fontcolor=white,` +
+      `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.playerName2}':reload=1:x=90:y=120:fontsize=18:fontcolor=white,` +
+      `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.p1Score}':reload=1:x=290:y=82:fontsize=18:fontcolor=white,` +
+      `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.p2Score}':reload=1:x=290:y=120:fontsize=18:fontcolor=white,` +
+      `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.nowPoint1}':reload=1:x=335:y=82:fontsize=18:fontcolor=black,` +
+      `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.nowPoint2}':reload=1:x=335:y=120:fontsize=18:fontcolor=black,` +
+      `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.player1Innings}':reload=1:x=50:y=100:fontsize=20:fontcolor=white[vout]`
     ].join('');
 
   const ffmpegArgs = [
-    // INPUT (giống ffmpeg2: 1 stream + 5 ảnh)
+    // INPUT (1 stream + 5 ảnh)
     '-i', rtmpIn,               // [0:v][0:a]
     '-i', config.imagePath,     // [1:v]
     '-i', config.logo1Path,     // [2:v]
@@ -147,7 +149,6 @@ app.post('/updateoverlay', (req, res) => {
   };
   ['name','playerName1','playerName2','p1Score','p2Score','nowPoint1','nowPoint2','player1Innings'].forEach(set);
 
-  // drawtext có reload=1 nên FFmpeg tự refresh
   res.json({ message: 'Overlay updated!' });
 });
 
