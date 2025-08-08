@@ -9,7 +9,7 @@ app.use(express.json());
 
 const runningWorkers = {}; // matchid => {proc, output_url, overlayFiles}
 
-const CONFIG_PATH = path.join(__dirname, 'config.json');
+const CONFIG_PATH = path.join(__dirname, 'config', 'config.js');
 if (!fs.existsSync(CONFIG_PATH)) {
   throw new Error(`Missing config file: ${CONFIG_PATH}`);
 }
