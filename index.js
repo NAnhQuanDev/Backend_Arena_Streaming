@@ -99,7 +99,6 @@ app.post('/startlive', (req, res) => {
 
   const ffmpegArgs = [
     // INPUT (1 stream + 5 ảnh)
-    '-timeout 1800000000', // 3 phút timeout
     '-i', rtmpIn,               // [0:v][0:a]
     '-i', config.imagePath,     // [1:v]
     '-i', config.logo1Path,     // [2:v]
@@ -169,16 +168,30 @@ app.post('/stoplive', (req, res) => {
 });
 
 // ========== 4) WEBHOOK on_done ==========
-app.post('/hook/on_done', (req, res) => {
-  const matchid = req.body.name;
+app.post('/stoplive', (req, res) => {
+  const { matchid } = req.body;
   const w = runningWorkers[matchid];
-  if (w) {
-    w.proc.kill();
-    cleanupOverlayFiles(w.overlayFiles);
-    delete runningWorkers[matchid];
-    console.log(`[${matchid}] FFmpeg auto-killed by on_done`);
+
+  if (!matchid || !w) {
+    console.log(`[${matchid}] Không có worker nào để dừng`);
+    return res.json({ message: 'Không có worker nào' });
   }
-  res.end();
+
+  console.log(`[${matchid}] Gửi SIGTERM để dừng FFmpeg...`);
+  w.proc.kill('SIGTERM'); // hủy mềm
+
+  setTimeout(() => {
+    if (w.proc.exitCode === null) {
+      console.log(`[${matchid}] FFmpeg chưa dừng, gửi SIGKILL...`);
+      w.proc.kill('SIGKILL'); // hủy mạnh
+    }
+  }, 5000);
+
+  delete runningWorkers[matchid];
+  cleanupOverlayFiles(w.overlayFiles);
+  console.log(`[${matchid}] FFmpeg stopped và dọn dẹp xong`);
+  res.json({ message: 'FFmpeg stopped' });
 });
+
 
 app.listen(3001, () => console.log('Livestream Controller API running at 3001'));
