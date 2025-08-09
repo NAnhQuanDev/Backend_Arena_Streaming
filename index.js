@@ -7,7 +7,7 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-const runningWorkers = {}; // matchid => {proc, output_url, overlayFiles, lastActivity}
+const runningWorkers = {}; // matchid => {proc, output_url, overlayFiles}
 
 // ---- Load config từ module JS, KHÔNG JSON.parse ----
 const CONFIG_PATH = path.join(__dirname, 'config', 'config.js');
@@ -15,35 +15,6 @@ if (!fs.existsSync(CONFIG_PATH)) {
   throw new Error(`Missing config file: ${CONFIG_PATH}`);
 }
 const config = require(CONFIG_PATH); // <- quan trọng
-
-// ===== Watchdog config =====
-const STALL_THRESHOLD_MS  = 5 * 60 * 1000;  // treo nếu >3 phút không có activity
-const KILL_GRACE_MS       = 10 * 1000;      // đợi 10s sau khi kill mới report
-const REPORT_URL          = (config && config.reportUrl) || 'http://127.0.0.1:4000/ffmpeg/report'; // API mẫu
-
-// fetch (Node 18+ có sẵn)
-const hasNativeFetch = typeof fetch === 'function';
-async function httpPostJson(url, payload) {
-  if (hasNativeFetch) {
-    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  } else {
-    // fallback nhẹ nếu Node <18
-    const http = url.startsWith('https') ? require('https') : require('http');
-    return new Promise((resolve, reject) => {
-      const data = JSON.stringify(payload);
-      const u = new URL(url);
-      const req = http.request({
-        hostname: u.hostname,
-        port: u.port || (u.protocol === 'https:' ? 443 : 80),
-        path: u.pathname + (u.search || ''),
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }
-      }, res => { res.on('data', ()=>{}); res.on('end', ()=>resolve()); });
-      req.on('error', reject);
-      req.write(data); req.end();
-    });
-  }
-}
 
 function tmpTextFile(matchid, key) {
   return `/tmp/${matchid}_${key}.txt`;
@@ -80,45 +51,6 @@ function cleanupOverlayFiles(overlayFiles) {
   Object.values(overlayFiles).forEach(p => {
     try { fs.existsSync(p) && fs.unlinkSync(p); } catch {}
   });
-}
-
-// ===== Helpers cho watchdog =====
-function isZombie(pid) {
-  try {
-    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); // "pid (cmd) STATE ..."
-    const m = stat.match(/^\d+\s+\(.+?\)\s+([A-Z])/);
-    return m && m[1] === 'Z';
-  } catch {
-    return false;
-  }
-}
-
-function isAlive(proc) {
-  try { return proc && proc.pid && process.kill(proc.pid, 0) === undefined; }
-  catch { return false; }
-}
-
-function countWorkers() {
-  return Object.values(runningWorkers).filter(w => isAlive(w.proc)).length;
-}
-
-async function reportCount() {
-  try {
-    const body = { active_count: countWorkers(), ts: new Date().toISOString() };
-    await httpPostJson(REPORT_URL, body);
-  } catch (e) {
-    console.warn('[watchdog] reportCount failed:', e?.message || e);
-  }
-}
-
-function killWorker(matchid, reason = 'unknown') {
-  const w = runningWorkers[matchid];
-  if (!w || !isAlive(w.proc)) return;
-
-  console.warn(`[${matchid}] Watchdog: killing FFmpeg (reason=${reason}) pid=${w.proc.pid}`);
-  try { w.proc.kill('SIGKILL'); } catch {}
-  // Cleanup & xóa worker vẫn theo on('close') như logic cũ
-  setTimeout(() => { reportCount(); }, KILL_GRACE_MS);
 }
 
 // ========== 1) START LIVE ==========
@@ -167,6 +99,7 @@ app.post('/startlive', (req, res) => {
 
   const ffmpegArgs = [
     // INPUT (1 stream + 5 ảnh)
+    '-timeout 1800000000', // 3 phút timeout
     '-i', rtmpIn,               // [0:v][0:a]
     '-i', config.imagePath,     // [1:v]
     '-i', config.logo1Path,     // [2:v]
@@ -181,7 +114,7 @@ app.post('/startlive', (req, res) => {
     '-map', '[vout]',
     '-map', '0:a?',
 
-    // Encoder/packager
+    // ===== GIỮ NGUYÊN OPTIONS như FFmpeg1 =====
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
     '-c:a', 'copy',
@@ -190,29 +123,17 @@ app.post('/startlive', (req, res) => {
   ];
 
   console.log(`[${matchid}] Spawn ffmpeg: ${ffmpegArgs.join(' ')}`);
-  const ffmpeg = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
-  // === theo dõi hoạt động (để watchdog biết treo) ===
-  runningWorkers[matchid] = { proc: ffmpeg, output_url, overlayFiles, lastActivity: Date.now() };
-
-  ffmpeg.stdout.on('data', d => {
-    const w = runningWorkers[matchid];
-    if (w) w.lastActivity = Date.now();
-    console.log(`[${matchid}] ${d}`);
-  });
-
-  ffmpeg.stderr.on('data', d => {
-    const w = runningWorkers[matchid];
-    if (w) w.lastActivity = Date.now();
-    console.log(`[${matchid}] ${d}`);
-  });
-
+  ffmpeg.stdout.on('data', d => console.log(`[${matchid}] ${d}`));
+  ffmpeg.stderr.on('data', d => console.log(`[${matchid}] ${d}`));
   ffmpeg.on('close', code => {
     console.log(`[${matchid}] FFmpeg exited (${code})`);
     cleanupOverlayFiles(overlayFiles);
     delete runningWorkers[matchid];
   });
 
+  runningWorkers[matchid] = { proc: ffmpeg, output_url, overlayFiles };
   res.json({ message: 'Đã start live!', ffmpegArgs });
 });
 
@@ -259,24 +180,5 @@ app.post('/hook/on_done', (req, res) => {
   }
   res.end();
 });
-
-// ===== Global watchdog: quét mỗi 5 phút, kill nếu zombie hoặc treo > 3 phút =====
-setInterval(() => {
-  const now = Date.now();
-
-  Object.entries(runningWorkers).forEach(([matchid, w]) => {
-    const proc = w.proc;
-    const alive = isAlive(proc);
-    const zombie = alive && isZombie(proc.pid);
-    const stalled = alive && (now - (w.lastActivity || 0) > STALL_THRESHOLD_MS);
-
-    // ✅ Log trạng thái mỗi lần quét
-    console.log(`[watchdog] ${matchid} alive=${alive} zombie=${zombie} stalled=${stalled} lastActiveAgo=${Math.round((now - w.lastActivity)/1000)}s`);
-
-    if (!alive) return;          // đã thoát, on('close') sẽ dọn
-    if (zombie) { killWorker(matchid, 'zombie'); return; }
-    if (stalled){ killWorker(matchid, `stalled>${STALL_THRESHOLD_MS}ms`); return; }
-  });
-}, CHECK_INTERVAL_MS);
 
 app.listen(3001, () => console.log('Livestream Controller API running at 3001'));
