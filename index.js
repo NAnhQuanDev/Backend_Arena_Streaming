@@ -17,9 +17,10 @@ if (!fs.existsSync(CONFIG_PATH)) {
 const config = require(CONFIG_PATH); // <- quan trọng
 
 // ===== Watchdog config =====
-const CHECK_INTERVAL_MS  = 30 * 1000;   // quét mỗi 30 giây
-const STALL_THRESHOLD_MS = 1  * 60 * 1000; // treo nếu > 3 phút không activity
-const KILL_GRACE_MS       = 10 * 1000;      // đợi 10s sau khi kill mới report
+// ===== Watchdog config (đặt sát đầu file) =====
+const CHECK_INTERVAL_MS  = Number(process.env.CHECK_INTERVAL_MS) || 30_000;   // 30s
+const STALL_THRESHOLD_MS = Number(process.env.STALL_THRESHOLD_MS) || 180_000; // 3 phút
+const KILL_GRACE_MS      = Number(process.env.KILL_GRACE_MS) || 10_000;
 const REPORT_URL          = (config && config.reportUrl) || 'http://127.0.0.1:4000/ffmpeg/report'; // API mẫu
 
 // fetch (Node 18+ có sẵn)
@@ -128,16 +129,6 @@ async function killWorker(matchid, reason) {
   setTimeout(() => { reportCount(); }, KILL_GRACE_MS);
 }
 
-app.post('/hook/on_done', async (req, res) => {
-  const matchid = req.body.name;
-  const w = runningWorkers[matchid];
-  if (w) {
-    await forceKillFFmpeg(w, matchid, 'on_done');
-    cleanupOverlayFiles(w.overlayFiles);
-    delete runningWorkers[matchid];
-  }
-  res.end();
-});
 
 
 // ========== 1) START LIVE ==========
@@ -267,16 +258,18 @@ app.post('/stoplive', (req, res) => {
 });
 
 // ========== 4) WEBHOOK on_done ==========
-app.post('/hook/on_done', (req, res) => {
+app.post('/hook/on_done', async (req, res) => {
   const matchid = req.body.name;
   const w = runningWorkers[matchid];
   if (w) {
-    forceKillFFmpeg(w, matchid, 'on_done');
+    await forceKillFFmpeg(w, matchid, 'on_done');
     cleanupOverlayFiles(w.overlayFiles);
     delete runningWorkers[matchid];
   }
   res.end();
 });
+
+
 
 
 function forceKillFFmpeg(w, matchid, reason = '') {
