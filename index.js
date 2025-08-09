@@ -271,6 +271,9 @@ setInterval(() => {
     const zombie = alive && isZombie(proc.pid);
     const stalled = alive && (now - (w.lastActivity || 0) > STALL_THRESHOLD_MS);
 
+    // ✅ Log trạng thái mỗi lần quét
+    console.log(`[watchdog] ${matchid} alive=${alive} zombie=${zombie} stalled=${stalled} lastActiveAgo=${Math.round((now - w.lastActivity)/1000)}s`);
+
     if (!alive) return;          // đã thoát, on('close') sẽ dọn
     if (zombie) { killWorker(matchid, 'zombie'); return; }
     if (stalled){ killWorker(matchid, `stalled>${STALL_THRESHOLD_MS}ms`); return; }
