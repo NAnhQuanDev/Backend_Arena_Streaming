@@ -2,8 +2,10 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const config = require('../config/config');
 const { isAlive, isZombie } = require('../utils/proc');
+const socketService = require('../services/socketService'); // tích hợp socket
 
-const runningWorkers = {}; // deviceid => { proc, output_url, overlayFiles, lastActivity }
+// deviceid => { proc, output_url, overlayFiles, lastActivity }
+const runningWorkers = {};
 let REPORT_PUT_URL = '';
 let CHECK_INTERVAL_MS = 60_000;
 let STALL_THRESHOLD_MS = 180_000;
@@ -86,7 +88,7 @@ function buildFfmpegArgs({ rtmpIn, output_url, overlayFiles }) {
     `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.p1Score}':reload=1:x=290:y=82:fontsize=18:fontcolor=white,` +
     `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.p2Score}':reload=1:x=290:y=120:fontsize=18:fontcolor=white,` +
     `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.nowPoint1}':reload=1:x=335:y=82:fontsize=18:fontcolor=black,` +
-    `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.nowPoint2}':reload=1:x=335:y=120:fontsize=18:fontcolor=black,` +
+    `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.nowPoint2}':reload=1:x=335;y=120:fontsize=18:fontcolor=black,`.replace(';',':') + // tránh nhầm dấu ; thành :
     `drawtext=fontfile='${fontPath}':textfile='${overlayFiles.player1Innings}':reload=1:x=50:y=100:fontsize=20:fontcolor=white[vout]`
   ].join('');
 
@@ -138,6 +140,7 @@ async function killWorker(deviceid, reason) {
   await forceKillFFmpeg(w, deviceid, reason);
   cleanupOverlayFiles(w.overlayFiles);
   delete runningWorkers[deviceid];
+  try { await socketService.stopSocket(deviceid); } catch {}
   setTimeout(() => { reportCount(); }, KILL_GRACE_MS);
 }
 
@@ -148,6 +151,9 @@ async function startLive({ deviceid, url, streamkey, overlayInit }) {
   }
   const overlayFiles = createOverlayFiles(deviceid, overlayInit);
 
+  // Cho socketService biết overlayFiles hiện tại của device
+  config.getOverlayFiles = (id) => (runningWorkers[id]?.overlayFiles || overlayFiles);
+
   const rtmpIn = `rtmp://localhost:1935/live/${deviceid}`;
   const output_url = `${url.replace(/\/$/, '')}/${streamkey}`;
   const ffmpegArgs = buildFfmpegArgs({ rtmpIn, output_url, overlayFiles });
@@ -156,6 +162,9 @@ async function startLive({ deviceid, url, streamkey, overlayInit }) {
   const ffmpeg = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
 
   runningWorkers[deviceid] = { proc: ffmpeg, output_url, overlayFiles, lastActivity: Date.now() };
+
+  // Join socket để nhận điểm số và ghi overlay ngay
+  try { await socketService.startSocket(deviceid); } catch (e) { console.warn(`[${deviceid}] startSocket error: ${e?.message||e}`); }
 
   ffmpeg.stdout.on('data', d => {
     const w = runningWorkers[deviceid];
@@ -167,10 +176,11 @@ async function startLive({ deviceid, url, streamkey, overlayInit }) {
     if (w) w.lastActivity = Date.now();
     console.log(`[${deviceid}] ${d}`);
   });
-  ffmpeg.on('close', code => {
+  ffmpeg.on('close', async code => {
     console.log(`[${deviceid}] FFmpeg exited (${code})`);
     cleanupOverlayFiles(overlayFiles);
     delete runningWorkers[deviceid];
+    try { await socketService.stopSocket(deviceid); } catch {}
   });
 
   return { message: 'Đã start live!', ffmpegArgs };
@@ -187,12 +197,13 @@ function updateOverlay(deviceid, fields) {
   return true;
 }
 
-function stopLive(deviceid) {
+async function stopLive(deviceid) {
   const w = runningWorkers[deviceid];
   if (w) {
     try { w.proc.kill(); } catch {}
     cleanupOverlayFiles(w.overlayFiles);
     delete runningWorkers[deviceid];
+    try { await socketService.stopSocket(deviceid); } catch {}
     return 'Worker stopped';
   }
   return 'Không có worker nào chạy cho deviceid này';
@@ -204,6 +215,7 @@ async function onDoneHook(deviceid) {
     await forceKillFFmpeg(w, deviceid, 'on_done');
     cleanupOverlayFiles(w.overlayFiles);
     delete runningWorkers[deviceid];
+    try { await socketService.stopSocket(deviceid); } catch {}
   }
 }
 
@@ -221,6 +233,7 @@ async function watchdogTick() {
       console.log(`[watchdog] ${deviceid} not alive -> cleanup`);
       cleanupOverlayFiles(w.overlayFiles);
       delete runningWorkers[deviceid];
+      try { await socketService.stopSocket(deviceid); } catch {}
       continue;
     }
     if (zombie)  { await killWorker(deviceid, 'zombie');  continue; }

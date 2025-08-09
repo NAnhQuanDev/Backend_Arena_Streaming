@@ -31,10 +31,10 @@ router.post('/updateoverlay', (req, res) => {
 });
 
 // 3) STOP LIVE
-router.post('/stoplive', (req, res) => {
+router.post('/stoplive', async (req, res) => {
   const { deviceid } = req.body;
   if (!deviceid) return res.status(400).json({ error: 'Thiếu deviceid' });
-  const msg = stopLive(deviceid);
+  const msg = await stopLive(deviceid);
   return res.json({ message: msg });
 });
 
