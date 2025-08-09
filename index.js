@@ -112,14 +112,12 @@ async function reportCount() {
   }
 }
 
-function killWorker(matchid, reason = 'unknown') {
+function killWorker(matchid, reason) {
   const w = runningWorkers[matchid];
-  if (!w || !isAlive(w.proc)) return;
-
-  console.warn(`[${matchid}] Watchdog: killing FFmpeg (reason=${reason}) pid=${w.proc.pid}`);
-  try { w.proc.kill('SIGKILL'); } catch {}
-  // Cleanup & xóa worker vẫn theo on('close') như logic cũ
-  setTimeout(() => { reportCount(); }, KILL_GRACE_MS);
+  if (!w) return;
+  forceKillFFmpeg(w, matchid, reason);
+  cleanupOverlayFiles(w.overlayFiles);
+  delete runningWorkers[matchid];
 }
 
 // ========== 1) START LIVE ==========
@@ -253,13 +251,28 @@ app.post('/hook/on_done', (req, res) => {
   const matchid = req.body.name;
   const w = runningWorkers[matchid];
   if (w) {
-    w.proc.kill();
+    forceKillFFmpeg(w, matchid, 'on_done');
     cleanupOverlayFiles(w.overlayFiles);
     delete runningWorkers[matchid];
-    console.log(`[${matchid}] FFmpeg auto-killed by on_done`);
   }
   res.end();
 });
+
+
+function forceKillFFmpeg(w, matchid, reason = '') {
+  if (!w || !isAlive(w.proc)) return;
+
+  console.log(`[${matchid}] Killing FFmpeg (reason=${reason}) PID=${w.proc.pid}`);
+  try { w.proc.kill('SIGTERM'); } catch {}
+  
+  setTimeout(() => {
+    if (isAlive(w.proc)) {
+      console.log(`[${matchid}] Still alive → SIGKILL PID=${w.proc.pid}`);
+      try { process.kill(w.proc.pid, 'SIGKILL'); } catch {}
+    }
+  }, 3000); // chờ 3s
+}
+
 
 // ===== Global watchdog: quét mỗi 5 phút, kill nếu zombie hoặc treo > 3 phút =====
 setInterval(() => {
