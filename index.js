@@ -17,7 +17,7 @@ if (!fs.existsSync(CONFIG_PATH)) {
 const config = require(CONFIG_PATH); // <- quan trọng
 
 // ===== Watchdog config =====
-const CHECK_INTERVAL_MS   = 5 * 60 * 1000;  // 5 phút/lần quét
+const CHECK_INTERVAL_MS   = 3 * 60 * 1000;  // 5 phút/lần quét
 const STALL_THRESHOLD_MS  = 3 * 60 * 1000;  // treo nếu >3 phút không có activity
 const KILL_GRACE_MS       = 10 * 1000;      // đợi 10s sau khi kill mới report
 const REPORT_URL          = (config && config.reportUrl) || 'http://127.0.0.1:4000/ffmpeg/report'; // API mẫu
