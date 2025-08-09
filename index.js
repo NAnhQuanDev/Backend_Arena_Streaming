@@ -21,31 +21,8 @@ const config = require(CONFIG_PATH); // <- quan trọng
 const CHECK_INTERVAL_MS  = Number(process.env.CHECK_INTERVAL_MS) || 30_000;   // 30s
 const STALL_THRESHOLD_MS = Number(process.env.STALL_THRESHOLD_MS) || 180_000; // 3 phút
 const KILL_GRACE_MS      = Number(process.env.KILL_GRACE_MS) || 10_000;
-const REPORT_URL          = (config && config.reportUrl) || 'http://127.0.0.1:4000/ffmpeg/report'; // API mẫu
+const REPORT_PUT_URL = 'https://api.arenabilliard.com/api/livestream-servers/update-live/stream5.arenabilliard.com?key=RNvVyXcyyPVjcpF9QJC2RLXrsc5s2mcF';
 
-// fetch (Node 18+ có sẵn)
-const hasNativeFetch = typeof fetch === 'function';
-async function httpPostJson(url, payload) {
-  if (hasNativeFetch) {
-    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  } else {
-    // fallback nhẹ nếu Node <18
-    const http = url.startsWith('https') ? require('https') : require('http');
-    return new Promise((resolve, reject) => {
-      const data = JSON.stringify(payload);
-      const u = new URL(url);
-      const req = http.request({
-        hostname: u.hostname,
-        port: u.port || (u.protocol === 'https:' ? 443 : 80),
-        path: u.pathname + (u.search || ''),
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }
-      }, res => { res.on('data', ()=>{}); res.on('end', ()=>resolve()); });
-      req.on('error', reject);
-      req.write(data); req.end();
-    });
-  }
-}
 
 function tmpTextFile(matchid, key) {
   return `/tmp/${matchid}_${key}.txt`;
@@ -113,12 +90,19 @@ function countWorkers() {
 
 async function reportCount() {
   try {
-    const body = { active_count: countWorkers(), ts: new Date().toISOString() };
-    await httpPostJson(REPORT_URL, body);
+    const activeCount = countWorkers();
+    const res = await fetch(REPORT_PUT_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current: activeCount })
+    });
+    if (!res.ok) throw new Error(`API status ${res.status}`);
+    console.log(`[watchdog] reportCount OK: current=${activeCount}`);
   } catch (e) {
     console.warn('[watchdog] reportCount failed:', e?.message || e);
   }
 }
+
 
 async function killWorker(matchid, reason) {
   const w = runningWorkers[matchid];
@@ -321,6 +305,7 @@ setInterval(() => {
     if (zombie) { await killWorker(matchid, 'zombie'); return; }
     if (stalled){ await killWorker(matchid, `stalled>${STALL_THRESHOLD_MS}ms`); return; }
   });
+  reportCount();
 }, CHECK_INTERVAL_MS);
 
 
