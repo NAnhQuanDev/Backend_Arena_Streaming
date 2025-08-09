@@ -17,8 +17,8 @@ if (!fs.existsSync(CONFIG_PATH)) {
 const config = require(CONFIG_PATH); // <- quan trọng
 
 // ===== Watchdog config =====
-const CHECK_INTERVAL_MS = 5 * 60 * 1000; // quét mỗi 5 phút
-const STALL_THRESHOLD_MS  = 5 * 60 * 1000;  // treo nếu >3 phút không có activity
+const CHECK_INTERVAL_MS  = 30 * 1000;   // quét mỗi 30 giây
+const STALL_THRESHOLD_MS = 1  * 60 * 1000; // treo nếu > 3 phút không activity
 const KILL_GRACE_MS       = 10 * 1000;      // đợi 10s sau khi kill mới report
 const REPORT_URL          = (config && config.reportUrl) || 'http://127.0.0.1:4000/ffmpeg/report'; // API mẫu
 
@@ -189,7 +189,7 @@ app.post('/startlive', (req, res) => {
   ];
 
   console.log(`[${matchid}] Spawn ffmpeg: ${ffmpegArgs.join(' ')}`);
-  const ffmpeg = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const ffmpeg = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
 
   // === theo dõi hoạt động (để watchdog biết treo) ===
   runningWorkers[matchid] = { proc: ffmpeg, output_url, overlayFiles, lastActivity: Date.now() };
@@ -260,17 +260,35 @@ app.post('/hook/on_done', (req, res) => {
 
 
 function forceKillFFmpeg(w, matchid, reason = '') {
-  if (!w || !isAlive(w.proc)) return;
+  if (!w || !isAlive(w.proc)) return Promise.resolve('already-dead');
 
-  console.log(`[${matchid}] Killing FFmpeg (reason=${reason}) PID=${w.proc.pid}`);
-  try { w.proc.kill('SIGTERM'); } catch {}
-  
-  setTimeout(() => {
-    if (isAlive(w.proc)) {
-      console.log(`[${matchid}] Still alive → SIGKILL PID=${w.proc.pid}`);
-      try { process.kill(w.proc.pid, 'SIGKILL'); } catch {}
-    }
-  }, 3000); // chờ 3s
+  return new Promise((resolve) => {
+    const pid = w.proc.pid;
+    let done = false;
+    const finish = (msg) => { if (!done) { done = true; resolve(msg); } };
+
+    console.log(`[${matchid}] Killing FFmpeg (reason=${reason}) PID=${pid}`);
+
+    // Khi process đóng hẳn
+    w.proc.once('close', (code, signal) => {
+      console.log(`[${matchid}] FFmpeg closed code=${code} signal=${signal}`);
+      finish('closed');
+    });
+
+    // Kill mềm cả group (PID âm). Fallback PID đơn nếu lỗi.
+    try { process.kill(-pid, 'SIGTERM'); } catch { try { w.proc.kill('SIGTERM'); } catch {} }
+
+    // Sau 3s, còn sống thì KILL mạnh cả group
+    setTimeout(() => {
+      if (isAlive(w.proc)) {
+        console.log(`[${matchid}] Still alive → SIGKILL PID=${pid}`);
+        try { process.kill(-pid, 'SIGKILL'); } catch { try { w.proc.kill('SIGKILL'); } catch {} }
+      }
+    }, 3000);
+
+    // Safety: nếu không nhận 'close' thì 10s tự thoát Promise để không treo
+    setTimeout(() => finish('timeout-wait-close'), 10000);
+  });
 }
 
 
