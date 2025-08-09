@@ -18,7 +18,7 @@ const config = require(CONFIG_PATH); // <- quan trọng
 
 // ===== Watchdog config =====
 // ===== Watchdog config (đặt sát đầu file) =====
-const CHECK_INTERVAL_MS  = Number(process.env.CHECK_INTERVAL_MS) || 30_000;   // 30s
+const CHECK_INTERVAL_MS  = Number(process.env.CHECK_INTERVAL_MS) || 60_000;   // 30s
 const STALL_THRESHOLD_MS = Number(process.env.STALL_THRESHOLD_MS) || 180_000; // 3 phút
 const KILL_GRACE_MS      = Number(process.env.KILL_GRACE_MS) || 10_000;
 const REPORT_PUT_URL = 'https://api.arenabilliard.com/api/livestream-servers/update-live/stream5.arenabilliard.com?key=RNvVyXcyyPVjcpF9QJC2RLXrsc5s2mcF';
