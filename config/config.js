@@ -3,7 +3,7 @@ const path = require('path');
 module.exports = {
   // Font DejaVu phổ biến trên Debian/Ubuntu (đổi nếu server bạn khác)
   fontPath: process.env.FONT_PATH || '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-  socketUrl: 'https://api.arenabilliard.com', 
+  socketUrl: 'https://api.arenabilliard.com/socket-auto-start-scoreboard', 
   socketToken: null, 
   getOverlayFiles: (deviceid) => {
     throw new Error('getOverlayFiles chưa được gán từ workerManager');
