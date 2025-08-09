@@ -95,8 +95,15 @@ function isZombie(pid) {
 }
 
 function isAlive(proc) {
-  try { return proc && proc.pid && process.kill(proc.pid, 0) === undefined; }
-  catch { return false; }
+  if (!proc || !proc.pid) return false;
+  try {
+    process.kill(proc.pid, 0);
+    return true;
+  } catch (e) {
+    // EPERM: không có quyền gửi tín hiệu nhưng process có tồn tại
+    if (e && e.code === 'EPERM') return true;
+    return false; // ESRCH -> không tồn tại
+  }
 }
 
 function countWorkers() {
@@ -112,13 +119,26 @@ async function reportCount() {
   }
 }
 
-function killWorker(matchid, reason) {
+async function killWorker(matchid, reason) {
   const w = runningWorkers[matchid];
   if (!w) return;
-  forceKillFFmpeg(w, matchid, reason);
+  await forceKillFFmpeg(w, matchid, reason);
   cleanupOverlayFiles(w.overlayFiles);
   delete runningWorkers[matchid];
+  setTimeout(() => { reportCount(); }, KILL_GRACE_MS);
 }
+
+app.post('/hook/on_done', async (req, res) => {
+  const matchid = req.body.name;
+  const w = runningWorkers[matchid];
+  if (w) {
+    await forceKillFFmpeg(w, matchid, 'on_done');
+    cleanupOverlayFiles(w.overlayFiles);
+    delete runningWorkers[matchid];
+  }
+  res.end();
+});
+
 
 // ========== 1) START LIVE ==========
 app.post('/startlive', (req, res) => {
@@ -260,33 +280,29 @@ app.post('/hook/on_done', (req, res) => {
 
 
 function forceKillFFmpeg(w, matchid, reason = '') {
-  if (!w || !isAlive(w.proc)) return Promise.resolve('already-dead');
-
+  // ❗ KHÔNG return sớm nếu !isAlive — cứ gửi tín hiệu group
   return new Promise((resolve) => {
+    if (!w || !w.proc || !w.proc.pid) return resolve('no-proc');
     const pid = w.proc.pid;
     let done = false;
     const finish = (msg) => { if (!done) { done = true; resolve(msg); } };
 
     console.log(`[${matchid}] Killing FFmpeg (reason=${reason}) PID=${pid}`);
 
-    // Khi process đóng hẳn
     w.proc.once('close', (code, signal) => {
       console.log(`[${matchid}] FFmpeg closed code=${code} signal=${signal}`);
       finish('closed');
     });
 
-    // Kill mềm cả group (PID âm). Fallback PID đơn nếu lỗi.
+    // TERM cả group (PID âm), fallback PID đơn
     try { process.kill(-pid, 'SIGTERM'); } catch { try { w.proc.kill('SIGTERM'); } catch {} }
 
-    // Sau 3s, còn sống thì KILL mạnh cả group
     setTimeout(() => {
-      if (isAlive(w.proc)) {
-        console.log(`[${matchid}] Still alive → SIGKILL PID=${pid}`);
-        try { process.kill(-pid, 'SIGKILL'); } catch { try { w.proc.kill('SIGKILL'); } catch {} }
-      }
-    }, 3000);
+      // Nếu vẫn chưa close thì KILL cả group
+      try { process.kill(-pid, 'SIGKILL'); } catch { try { w.proc.kill('SIGKILL'); } catch {} }
+    }, 2000);
 
-    // Safety: nếu không nhận 'close' thì 10s tự thoát Promise để không treo
+    // Safety timeout nếu không nhận 'close'
     setTimeout(() => finish('timeout-wait-close'), 10000);
   });
 }
@@ -295,20 +311,24 @@ function forceKillFFmpeg(w, matchid, reason = '') {
 // ===== Global watchdog: quét mỗi 5 phút, kill nếu zombie hoặc treo > 3 phút =====
 setInterval(() => {
   const now = Date.now();
+  Object.entries(runningWorkers).forEach(async ([matchid, w]) => {
+    const alive   = isAlive(w.proc);
+    const zombie  = alive && isZombie(w.proc.pid);
+    const stalled = (now - (w.lastActivity || 0) > STALL_THRESHOLD_MS);
 
-  Object.entries(runningWorkers).forEach(([matchid, w]) => {
-    const proc = w.proc;
-    const alive = isAlive(proc);
-    const zombie = alive && isZombie(proc.pid);
-    const stalled = alive && (now - (w.lastActivity || 0) > STALL_THRESHOLD_MS);
+    console.log(`[watchdog] ${matchid} alive=${alive} zombie=${zombie} stalled=${stalled} lastActiveAgo=${Math.round((now - (w.lastActivity||0))/1000)}s`);
 
-    // ✅ Log trạng thái mỗi lần quét
-    console.log(`[watchdog] ${matchid} alive=${alive} zombie=${zombie} stalled=${stalled} lastActiveAgo=${Math.round((now - w.lastActivity)/1000)}s`);
-
-    if (!alive) return;          // đã thoát, on('close') sẽ dọn
-    if (zombie) { killWorker(matchid, 'zombie'); return; }
-    if (stalled){ killWorker(matchid, `stalled>${STALL_THRESHOLD_MS}ms`); return; }
+    if (!alive) {
+      // process đã chết: dọn cho sạch map để không “ảo giác”
+      console.log(`[watchdog] ${matchid} not alive -> cleanup`);
+      cleanupOverlayFiles(w.overlayFiles);
+      delete runningWorkers[matchid];
+      return;
+    }
+    if (zombie) { await killWorker(matchid, 'zombie'); return; }
+    if (stalled){ await killWorker(matchid, `stalled>${STALL_THRESHOLD_MS}ms`); return; }
   });
 }, CHECK_INTERVAL_MS);
+
 
 app.listen(3001, () => console.log('Livestream Controller API running at 3001'));
