@@ -99,7 +99,7 @@ app.post('/startlive', (req, res) => {
 
   const ffmpegArgs = [
     // INPUT (1 stream + 5 ảnh)
-    '-timeout 1800000000', // 3 phút timeout
+    '-timeout', '1800000000', // 30 phút timeout
     '-i', rtmpIn,               // [0:v][0:a]
     '-i', config.imagePath,     // [1:v]
     '-i', config.logo1Path,     // [2:v]
