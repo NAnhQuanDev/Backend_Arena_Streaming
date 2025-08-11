@@ -49,16 +49,16 @@ router.post('/hook/on_done', async (req, res) => {
 
 
 // 5) start_live_facebook
-router.post('/start_live_facebook', async (req, res) => {
+router.post('/api/start-live-fb', async (req, res) => {
   try {
-    const { deviceid } = req.body;
-    if (!deviceid) {
-      return res.status(400).json({ error: 'Thiếu tham số deviceid' });
+    const { deviceId } = req.body;
+    if (!deviceId) {
+      return res.status(400).json({ error: 'Thiếu tham số deviceId' });
     }
-  const ok = sendToDevice(deviceid, {
+  const ok = sendToDevice(deviceId, {
       status: 'message',
       action: 'start-live',
-      deviceid
+      deviceId
   });
   return res.json({ sent: ok });
   } catch (e) {
@@ -67,22 +67,24 @@ router.post('/start_live_facebook', async (req, res) => {
 });
 
 // 6) stop_live_facebook
-router.post('/stop_live_facebook', async (req, res) => {
+router.post('/api/stop-live-fb"', async (req, res) => {
   try {
-    const { deviceid } = req.body;
-    if (!deviceid) {
-      return res.status(400).json({ error: 'Thiếu tham số deviceid' });
+    const { deviceId } = req.body;
+    if (!deviceId) {
+      return res.status(400).json({ error: 'Thiếu tham số deviceId' });
     }
-    const ok = sendToDevice(deviceid, {
+    const ok = sendToDevice(deviceId, {
       status: 'message',
       action: 'stop-live',
-      deviceid
+      deviceId
     });
     return res.json({ sent: ok });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
 });
+
+
 
 
 
