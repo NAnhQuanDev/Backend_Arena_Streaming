@@ -154,7 +154,7 @@ async function startLive({ deviceid, url, streamkey, overlayInit }) {
   // Cho socketService biết overlayFiles hiện tại của device
   config.getOverlayFiles = (id) => (runningWorkers[id]?.overlayFiles || overlayFiles);
 
-  const rtmpIn = `rtmp://localhost:1935/live/${deviceid}`;
+  const rtmpIn = `rtmp://103.153.75.209:1935/live/${deviceid}`;
   const output_url = `${url.replace(/\/$/, '')}/${streamkey}`;
   const ffmpegArgs = buildFfmpegArgs({ rtmpIn, output_url, overlayFiles });
 
@@ -216,6 +216,9 @@ async function onDoneHook(deviceid) {
     cleanupOverlayFiles(w.overlayFiles);
     delete runningWorkers[deviceid];
     try { await socketService.stopSocket(deviceid); } catch {}
+  }
+  else {
+    console.warn(`[onDoneHook] Không có worker nào chạy cho deviceid ${deviceid}`);
   }
 }
 

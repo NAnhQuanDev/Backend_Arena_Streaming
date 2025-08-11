@@ -40,7 +40,7 @@ function initServerSocket(httpServer) {
     ws.deviceId = deviceId;
 
     console.log(`[WS] Device ${deviceId} connected from ${ws.ip}`);
-    sendJSON(ws, { status: 'success', action: 'joined', deviceId });
+    sendJSON(ws, { status: 'message', action: 'connected', deviceId });
 
     // Lắng nghe & LOG ai gửi + nội dung
     ws.on('message', (raw) => {
