@@ -2,7 +2,8 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const config = require('../config/config');
 const { isAlive, isZombie } = require('../utils/proc');
-const socketService = require('../services/socketService'); // tích hợp socket
+const socketService = require('../services/socketService'); 
+require('dotenv').config()
 
 // deviceid => { proc, output_url, overlayFiles, lastActivity }
 const runningWorkers = {};
@@ -154,7 +155,7 @@ async function startLive({ deviceid, url, streamkey, overlayInit }) {
   // Cho socketService biết overlayFiles hiện tại của device
   config.getOverlayFiles = (id) => (runningWorkers[id]?.overlayFiles || overlayFiles);
 
-  const rtmpIn = `rtmp://103.153.75.209:1935/live/${deviceid}`;
+  const rtmpIn = `${process.env.URL_INPUT_STREAM}${deviceid}`;
   const output_url = `${url.replace(/\/$/, '')}/${streamkey}`;
   const ffmpegArgs = buildFfmpegArgs({ rtmpIn, output_url, overlayFiles });
 

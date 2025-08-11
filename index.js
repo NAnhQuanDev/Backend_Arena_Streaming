@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+require('dotenv').config(); 
 
 const liveRoutes = require('./routes/live');
 const { reportCount, watchdogTick, setReportUrl, setCheckConfig } = require('./services/workerManager.js');
@@ -28,11 +29,11 @@ const KILL_GRACE_MS      = Number(process.env.KILL_GRACE_MS)      || 10_000;
 setCheckConfig({ CHECK_INTERVAL_MS, STALL_THRESHOLD_MS, KILL_GRACE_MS });
 
 setReportUrl(
-  'https://api.arenabilliard.com/api/livestream-servers/update-live/stream5.arenabilliard.com?key=RNvVyXcyyPVjcpF9QJC2RLXrsc5s2mcF'
-);
+  process.env.REPORT_URL 
+)
 
 // --- Routes ---
-app.use('/api', liveRoutes); // => URL sẽ là /api/startlive, /api/start-live-fb
+app.use('/api', liveRoutes);
 
 
 // --- Global watchdog loop ---
@@ -42,7 +43,7 @@ setInterval(() => {
 }, CHECK_INTERVAL_MS);
 
 // 🚀 DÙNG HTTP SERVER ĐỂ GẮN WS
-const PORT = Number(process.env.PORT) || 8001;
+const PORT = Number(process.env.PORT);
 const server = http.createServer(app);
 
 // Khởi tạo WebSocket trên cùng cổng
