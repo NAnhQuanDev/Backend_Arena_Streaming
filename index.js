@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const cors = require('cors'); // ✨ Thêm dòng này
 
 const liveRoutes = require('./routes/live');
 const { reportCount, watchdogTick, setReportUrl, setCheckConfig } = require('./services/workerManager.js');
@@ -12,6 +13,13 @@ const { initServerSocket, sendToDevice } = require('./websocket/websocketServer.
 const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
+// ✨ Thêm cấu hình CORS ở đây
+app.use(cors({
+    origin: '*', // hoặc ['https://fb.arenabilliard.com'] nếu muốn giới hạn
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // --- Load config ---
 const CONFIG_PATH = path.join(__dirname, 'config', 'config.js');
@@ -34,7 +42,6 @@ setReportUrl(
 // --- Routes ---
 app.use('/', liveRoutes);
 
-
 // --- Global watchdog loop ---
 setInterval(() => {
   watchdogTick().catch(()=>{});
@@ -42,7 +49,7 @@ setInterval(() => {
 }, CHECK_INTERVAL_MS);
 
 // 🚀 DÙNG HTTP SERVER ĐỂ GẮN WS
-const PORT = Number(process.env.PORT) || 3001;
+const PORT = Number(process.env.PORT) || 8001;
 const server = http.createServer(app);
 
 // Khởi tạo WebSocket trên cùng cổng
