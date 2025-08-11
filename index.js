@@ -32,7 +32,7 @@ setReportUrl(
 );
 
 // --- Routes ---
-app.use('/', liveRoutes);
+app.use('/api', liveRoutes); // => URL sẽ là /api/startlive, /api/start-live-fb
 
 
 // --- Global watchdog loop ---

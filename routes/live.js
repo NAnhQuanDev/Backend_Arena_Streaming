@@ -49,7 +49,7 @@ router.post('/hook/on_done', async (req, res) => {
 
 
 // 5) start_live_facebook
-router.post('/api/start-live-fb', async (req, res) => {
+router.post('/start-live-fb', async (req, res) => {
   try {
     const { deviceId } = req.body;
     if (!deviceId) {
@@ -67,7 +67,7 @@ router.post('/api/start-live-fb', async (req, res) => {
 });
 
 // 6) stop_live_facebook
-router.post('/api/stop-live-fb"', async (req, res) => {
+router.post('/stop-live-fb', async (req, res) => {
   try {
     const { deviceId } = req.body;
     if (!deviceId) {
