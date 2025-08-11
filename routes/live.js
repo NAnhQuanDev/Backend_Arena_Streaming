@@ -55,10 +55,10 @@ router.post('/start_live_facebook', async (req, res) => {
     if (!deviceid) {
       return res.status(400).json({ error: 'Thiếu tham số deviceid' });
     }
-  const ok = sendToDevice(deviceId, {
+  const ok = sendToDevice(deviceid, {
       status: 'message',
       action: 'start-live',
-      deviceId
+      deviceid
   });
   return res.json({ sent: ok });
   } catch (e) {
@@ -73,10 +73,10 @@ router.post('/stop_live_facebook', async (req, res) => {
     if (!deviceid) {
       return res.status(400).json({ error: 'Thiếu tham số deviceid' });
     }
-    const ok = sendToDevice(deviceId, {
+    const ok = sendToDevice(deviceid, {
       status: 'message',
       action: 'stop-live',
-      deviceId
+      deviceid
     });
     return res.json({ sent: ok });
   } catch (e) {
