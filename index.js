@@ -1,9 +1,13 @@
 const express = require('express');
+const http = require('http');
 const path = require('path');
 const fs = require('fs');
 
 const liveRoutes = require('./routes/live');
 const { reportCount, watchdogTick, setReportUrl, setCheckConfig } = require('./services/workerManager.js');
+
+// ✨ WebSocket
+const { initServerSocket, sendToDevice } = require('./websocket/websocketServer.js');
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
@@ -30,10 +34,21 @@ setReportUrl(
 // --- Routes ---
 app.use('/', liveRoutes);
 
+
 // --- Global watchdog loop ---
 setInterval(() => {
   watchdogTick().catch(()=>{});
   reportCount().catch(()=>{});
 }, CHECK_INTERVAL_MS);
 
-app.listen(3001, () => console.log('Livestream Controller API running at 3001'));
+// 🚀 DÙNG HTTP SERVER ĐỂ GẮN WS
+const PORT = Number(process.env.PORT) || 3001;
+const server = http.createServer(app);
+
+// Khởi tạo WebSocket trên cùng cổng
+initServerSocket(server);
+
+server.listen(PORT, () => {
+  console.log(`Livestream Controller API + WS running at ${PORT}`);
+  console.log(`WebSocket endpoint: ws://<host>:${PORT}/ws/:deviceId  hoặc  /ws?deviceId=...`);
+});

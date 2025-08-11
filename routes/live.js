@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const { sendToDevice } = require('../websocket/websocketServer.js');
+
 const {
   startLive,
   updateOverlay,
@@ -44,5 +46,45 @@ router.post('/hook/on_done', async (req, res) => {
   await onDoneHook(deviceid);
   res.end();
 });
+
+
+// 5) start_live_facebook
+router.post('/start_live_facebook', async (req, res) => {
+  try {
+    const { deviceid } = req.body;
+    if (!deviceid) {
+      return res.status(400).json({ error: 'Thiếu tham số deviceid' });
+    }
+  const ok = sendToDevice(deviceId, {
+      status: 'message',
+      action: 'start-live',
+      deviceId
+  });
+  return res.json({ sent: ok });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// 6) stop_live_facebook
+router.post('/stop_live_facebook', async (req, res) => {
+  try {
+    const { deviceid } = req.body;
+    if (!deviceid) {
+      return res.status(400).json({ error: 'Thiếu tham số deviceid' });
+    }
+    const ok = sendToDevice(deviceId, {
+      status: 'message',
+      action: 'stop-live',
+      deviceId
+    });
+    return res.json({ sent: ok });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+
+
 
 module.exports = router;
