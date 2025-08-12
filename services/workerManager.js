@@ -198,6 +198,11 @@ function updateOverlay(deviceid, fields) {
   return true;
 }
 
+function isDeviceLive(deviceid) {
+  const w = runningWorkers[deviceid];
+  return !!(w && isAlive(w.proc));
+}
+
 async function stopLive(deviceid) {
   const w = runningWorkers[deviceid];
   if (w) {
@@ -254,4 +259,5 @@ module.exports = {
   onDoneHook,
   reportCount,
   watchdogTick,
+  isDeviceLive,
 };

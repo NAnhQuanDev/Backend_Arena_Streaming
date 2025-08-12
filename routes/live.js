@@ -6,7 +6,9 @@ const {
   startLive,
   updateOverlay,
   stopLive,
-  onDoneHook
+  onDoneHook,
+  isDeviceLive,
+
 } = require('../services/workerManager.js');
 
 // 1) START LIVE
@@ -84,6 +86,16 @@ router.post('/stop-live-fb', async (req, res) => {
   }
 });
 
+// 7) is_device_live
+router.get('/check-live-status/:deviceId', (req, res) => {
+  const { deviceId } = req.params;
+  try {
+    const isLive = isDeviceLive(deviceId);
+    return res.json({ isLive });
+  } catch (e) {
+    return res.status(500).json({ error: e.message || 'Internal Server Error' });
+  }
+});
 
 
 
