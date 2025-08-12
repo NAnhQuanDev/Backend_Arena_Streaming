@@ -48,7 +48,10 @@ async function writeOverlay(deviceId, scoreData) {
     return pad2 && str.length <= 2 ? ` ${str}` : str;
   };
 
-  const name = (scoreData?.name ?? "Arena").toString();
+  const name =
+  !scoreData?.name || scoreData.name === "null"
+    ? "Arena"
+    : scoreData.name.toString();
   const p1Score = s(scoreData?.player1Score);
   const p2Score = s(scoreData?.player2Score);
   const nowPoint1 = s(scoreData?.nowPoint1);
